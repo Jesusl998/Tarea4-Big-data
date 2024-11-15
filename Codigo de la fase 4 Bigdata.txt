@@ -1,0 +1,203 @@
+
+import happybase
+import pandas as pd
+from datetime import datetime
+
+# Bloque principal de ejecución
+try:
+    # Establecer conexión con HBase
+    connection = happybase.Connection('localhost')
+    print("Conexión establecida con HBase")
+
+    # Crear la tabla con las familias de columnas
+    table_name = 'emprendedores'
+    families = {
+        'infogeneral': dict(),  # información general edad
+        'infogeografica': dict(),  # informacion como Departamento, Municipio, Categoría_Departamento, Categoría_Mu
+        'infoempresa': dict(),  # información de NOMBRE_EMPRESA, REPRESENTANTE, TAMANO_EMPRESA, ACCESO_INTERNET
+        'infotemporal': dict()  # Indica la fecha de corte, fecha_vigencia
+    }
+
+    # Eliminar la tabla si ya existe
+    if table_name.encode() in connection.tables():
+        connection.delete_table(table_name, disable=True)
+
+    # Crear nueva tabla
+    connection.create_table(table_name, families)
+    table = connection.table(table_name)
+    print("Tabla 'emprendedores' creada exitosamente")
+
+    # Cargar datos del CSV
+    car_data = pd.read_csv('wghm-xb3a.csv')
+
+    # Iterar sobre el DataFrame usando el índice
+    for index, row in car_data.iterrows():
+       #Generar row key basado en el índice
+       row_key = f'car_{index}'.encode()
+
+       # Organizar los datos en familias de columnas
+       data = {
+         b'infogeneral:edad': str(row['edad']).encode(),
+         b'infogeneral:genero': str(row['genero']).encode(),
+         b'infogeneral:nivel_educativo':str(row['nivel_educativo']).encode(),
+         b'infogeneral:inversion':str(row['inversion']).encode(),
+
+         b'infogeografica:departamento':str(row['departamento']).encode(),
+         b'infogeografica:municipio':str(row['municipio']).encode(),
+         b'infogeografica:categoria_departamento':str(row['categoria_departamento']).encode(),
+         b'infogeografica:categoria_municipio':str(row['categoria_municipio']).encode(),
+
+         b'infoempresa:nombre_empresa':str(row['nombre_empresa']).encode(),
+         b'infoempresa:representante':str(row['representante']).encode(),
+         b'infoempresa:tama_o_empresa':str(row['tama_o_empresa']).encode(),
+         b'infoempresa:acceso_internet': str(row['acceso_internet']).encode(),
+
+         b'infotemporal:fecha_corte':str(row['fecha_corte']).encode(),
+         b'infotemporal:fecha_vigencia':str(row['fecha_vigencia']).encode()
+       }
+       table.put(row_key, data)
+
+    print("Datos cargados exitosamente")
+
+    # Mostrar primeros tres registros de la tabla
+    print("\n=== Todos los emprendedores en la base de datos (primeros 3) ===")
+    count = 0
+    for key, data in table.scan():
+        if count < 3:  # Limitar a 3 para el ejemplo
+            print(f"Edad: {data.get(b'infogeneral:edad', b'').decode()}")
+            print(f"Género: {data.get(b'infogeneral:genero', b'').decode()}")
+            print(f"Nivel educativo: {data.get(b'infogeneral:nivel_educativo', b'').decode()}")
+            print(f"Inversión: {data.get(b'infogeneral:inversion', b'').decode()}")
+            print(f"Departamento: {data.get(b'infogeografica:departamento', b'').decode()}")
+            count += 1
+
+    # Consulta para obtener todos los emprendedores de un departamento específico
+    departamento_busqueda = 'ANTIOQUIA'
+    print(f"\n=== Emprendedores en el departamento '{departamento_busqueda}' ===")
+    for key, data in table.scan():
+        if data.get(b'infogeografica:departamento', b'').decode() == departamento_busqueda:
+            print(f"Nombre de la empresa: {data.get(b'infoempresa:nombre_empresa', b'').decode()}")
+            print(f"Representante: {data.get(b'infoempresa:representante', b'').decode()}")
+            print(f"Edad: {data.get(b'infogeneral:edad', b'').decode()}")
+            print(f"Nivel educativo: {data.get(b'infogeneral:nivel_educativo', b'').decode()}")
+            print(f"Inversión: {data.get(b'infogeneral:inversion', b'').decode()}")
+
+    # Consulta para obtener emprendedores según una fecha de corte específica
+    fecha_corte_busqueda = '2021-05-13'
+    print(f"\n=== Emprendedores registrados con fecha de corte '{fecha_corte_busqueda}' ===")
+
+    for key, data in table.scan():
+        if data.get(b'infotemporal:fecha_corte', b'').decode() == fecha_corte_busqueda:
+            print(f"Nombre de la empresa: {data.get(b'infoempresa:nombre_empresa', b'').decode()}")
+            print(f"Departamento: {data.get(b'infogeografica:departamento', b'').decode()}")
+            print(f"Fecha de corte: {data.get(b'infotemporal:fecha_corte', b'').decode()}")
+
+    # Definir el valor mínimo de inversión
+    min_inversion = 7000000000
+
+    print(f"\n=== Emprendedores con inversión mayor a {min_inversion} ===")
+    for key, data in table.scan():
+        inversion = int(data.get(b'infogeneral:inversion', b'0').decode())
+        if inversion > min_inversion:
+            print(f"Edad: {data.get(b'infogeneral:edad', b'').decode()}")
+            print(f"Inversión: {inversion}")
+            print(f"Departamento: {data.get(b'infogeografica:departamento', b'').decode()}")
+            print(f"Nombre Empresa: {data.get(b'infoempresa:nombre_empresa', b'').decode()}")
+
+    # Filtrar emprendedores por genero
+    genero_deseado = 'FEMENINO'
+
+    print(f"\n=== Emprendedores del género {genero_deseado} ===")
+    for key, data in table.scan():
+        genero = data.get(b'infogeneral:genero', b'').decode()
+        if genero == genero_deseado:
+            print(f"Género: {genero}")
+            print(f"Departamento: {data.get(b'infogeografica:departamento', b'').decode()}")
+            print(f"Nombre Empresa: {data.get(b'infoempresa:nombre_empresa', b'').decode()}")
+
+    # Agregar un nuevo emprendedor Jesus david lopez salcedo
+    nuevo_emprendedor = {
+        b'infogeneral:edad': b'35',
+        b'infogeneral:genero': b'M',
+        b'infogeneral:nivel_educativo': b'Universitario',
+        b'infogeneral:inversion': b'50000',
+
+        b'infogeografica:departamento': b'Cordoba',
+        b'infogeografica:municipio': b'Chinu',
+        b'infogeografica:categoria_departamento': b'A',
+        b'infogeografica:categoria_municipio': b'B',
+
+        b'infoempresa:nombre_empresa': b'Bigdatafaseiiii',
+        b'infoempresa:representante': b'Jesuslopez',
+        b'infoempresa:tama_o_empresa': b'Mediana',
+        b'infoempresa:acceso_internet': b'Si',
+
+        b'infotemporal:fecha_corte': b'2024-11-13',
+        b'infotemporal:fecha_vigencia': b'2025-11-13'
+    }
+
+    row_key = b'emprendedor_nuevo'
+
+    table.put(row_key, nuevo_emprendedor)
+    print(f"Nuevo emprendedor agregado con clave: {row_key.decode()}")
+
+    # Actualizar el registro del emprendedor con clave 'emprendedor_nuevo'
+    row_key = b'emprendedor_nuevo'
+    actualizacion_emprendedor = {
+        b'infogeneral:edad': b'26',  # Actualizamos la edad a 26 en este caso
+        b'infoempresa:representante': b'Jesuslopez'  # Cambiamos el representante
+    }
+
+    table.put(row_key, actualizacion_emprendedor)
+    print(f"Datos del emprendedor con clave {row_key.decode()} actualizados")
+
+    # Consultar el nuevo emprendedor agregado
+    row_key = b'emprendedor_nuevo'
+    nuevo_emprendedor = table.row(row_key)
+
+    # Consultar el nuevo emprendedor agregado
+    row_key = b'emprendedor_nuevo'
+    nuevo_emprendedor = table.row(row_key)
+
+    # Imprimir los datos del emprendedor de forma organizada
+    if nuevo_emprendedor:
+        print(f"\nDatos del emprendedor con clave {row_key.decode()}:")
+        print(f"Edad: {nuevo_emprendedor.get(b'infogeneral:edad', b'').decode()}")
+        print(f"Género: {nuevo_emprendedor.get(b'infogeneral:genero', b'').decode()}")
+        print(f"Nivel Educativo: {nuevo_emprendedor.get(b'infogeneral:nivel_educativo', b'').decode()}")
+        print(f"Inversión: {nuevo_emprendedor.get(b'infogeneral:inversion', b'').decode()}")
+
+        print(f"Departamento: {nuevo_emprendedor.get(b'infogeografica:departamento', b'').decode()}")
+        print(f"Municipio: {nuevo_emprendedor.get(b'infogeografica:municipio', b'').decode()}")
+        print(f"Categoría Departamento: {nuevo_emprendedor.get(b'infogeografica:categoria_departamento', b'').decode()}")
+        print(f"Categoría Municipio: {nuevo_emprendedor.get(b'infogeografica:categoria_municipio', b'').decode()}")
+
+        print(f"Nombre Empresa: {nuevo_emprendedor.get(b'infoempresa:nombre_empresa', b'').decode()}")
+        print(f"Representante: {nuevo_emprendedor.get(b'infoempresa:representante', b'').decode()}")
+        print(f"Tamaño Empresa: {nuevo_emprendedor.get(b'infoempresa:tama_o_empresa', b'').decode()}")
+        print(f"Acceso a Internet: {nuevo_emprendedor.get(b'infoempresa:acceso_internet', b'').decode()}")
+
+        print(f"Fecha Corte: {nuevo_emprendedor.get(b'infotemporal:fecha_corte', b'').decode()}")
+        print(f"Fecha Vigencia: {nuevo_emprendedor.get(b'infotemporal:fecha_vigencia', b'').decode()}")
+    else:
+        print(f"No se encontró el emprendedor con clave {row_key.decode()}")
+
+    # Eliminar el registro del emprendedor con clave 'emprendedor_nuevo'
+    row_key = b'emprendedor_nuevo'
+    table.delete(row_key)
+    print(f"Emprendedor con clave {row_key.decode()} eliminado de la base de datos")
+
+except ConnectionError:
+    print("No se pudo conectar a HBase")
+except FileNotFoundError:
+    print("El archivo CSV no se encontró")
+except Exception as e:
+    print(f"Ocurrió un error inesperado: {str(e)}")
+finally:
+    # Cerrar la conexión
+    connection.close()
+
+           
+   
+
+
